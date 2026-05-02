@@ -1,0 +1,196 @@
+const SHEET_TRANSAKSI = "Transaksi";
+const SHEET_LOG = "Log Revisi";
+const SHEET_CONFIG = "Konfigurasi";
+
+function initSheets() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  function make(name, headers) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) {
+      sh = ss.insertSheet(name);
+      sh.appendRow(headers);
+      sh.getRange(1,1,1,headers.length).setBackground("#0f1e35").setFontColor("#fff").setFontWeight("bold");
+      sh.setFrozenRows(1);
+    }
+    return sh;
+  }
+  make(SHEET_TRANSAKSI, ["id","tanggal","deskripsi","kategori","jenis","nominal","metode","bukti","catatan","created_at"]);
+  make(SHEET_LOG,       ["id","waktu","type","deskripsi","detail","alasan"]);
+  make(SHEET_CONFIG,    ["key","value"]);
+  var cfg = ss.getSheetByName(SHEET_CONFIG);
+  var rows = cfg.getDataRange().getValues();
+  var ada = false;
+  for (var i = 0; i < rows.length; i++) { if (rows[i][0] === "saldo_awal") { ada = true; break; } }
+  if (!ada) cfg.appendRow(["saldo_awal", 5000000]);
+}
+
+function jsonpOut(callback, obj) {
+  var json = JSON.stringify(obj);
+  var out = callback ? callback + "(" + json + ")" : json;
+  return ContentService.createTextOutput(out)
+    .setMimeType(callback ? ContentService.MimeType.JAVASCRIPT : ContentService.MimeType.JSON);
+}
+
+function ok(cb, data)  { return jsonpOut(cb, { status: "ok",    data: data    }); }
+function err(cb, msg)  { return jsonpOut(cb, { status: "error", message: msg  }); }
+
+function doGet(e) {
+  var cb = e.parameter.callback || "";
+  try {
+    initSheets();
+    var a = e.parameter.action || "ping";
+    if (a === "ping")         return ok(cb, { message: "Backend aktif", ts: new Date().toISOString() });
+    if (a === "getAll")       return ok(cb, getAllData());
+    if (a === "getTransaksi") return ok(cb, getTransaksi());
+    if (a === "getLog")       return ok(cb, getLog());
+    if (a === "getConfig")    return ok(cb, getConfig());
+    // Handle POST via GET with payload param (JSONP workaround)
+    if (e.parameter.payload) {
+      var body = JSON.parse(e.parameter.payload);
+      return handleAction(cb, body);
+    }
+    return err(cb, "Aksi tidak dikenal: " + a);
+  } catch(ex) { return err(cb, ex.message); }
+}
+
+function doPost(e) {
+  var cb = "";
+  try {
+    initSheets();
+    var body = JSON.parse(e.postData.contents);
+    return handleAction(cb, body);
+  } catch(ex) { return err(cb, ex.message); }
+}
+
+function handleAction(cb, body) {
+  var a = body.action;
+  if (a === "saveTransaksi")   return ok(cb, saveTransaksi(body.data));
+  if (a === "updateTransaksi") return ok(cb, updateTransaksi(body.id, body.data));
+  if (a === "deleteTransaksi") return ok(cb, deleteTransaksi(body.id));
+  if (a === "addLog")          return ok(cb, addLog(body.data));
+  if (a === "setConfig")       return ok(cb, setConfig(body.key, body.value));
+  if (a === "bulkSave")        return ok(cb, bulkSave(body.transactions));
+  if (a === "clearAll")        return ok(cb, clearAll());
+  return err(cb, "Aksi tidak dikenal: " + a);
+}
+
+function getAllData() {
+  return { transaksi: getTransaksi(), log: getLog(), saldoAwal: getSaldoAwal() };
+}
+
+function getTransaksi() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TRANSAKSI);
+  var rows = sh.getDataRange().getValues();
+  if (rows.length <= 1) return [];
+  var out = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[0]) continue;
+    out.push({
+      id: r[0],
+      tanggal: r[1] instanceof Date ? Utilities.formatDate(r[1], "Asia/Jakarta", "yyyy-MM-dd") : String(r[1]),
+      deskripsi: r[2], kategori: r[3], jenis: r[4],
+      nominal: Number(r[5]) || 0,
+      metode: r[6], bukti: r[7], catatan: r[8], created_at: r[9]
+    });
+  }
+  return out;
+}
+
+function saveTransaksi(d) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TRANSAKSI);
+  sh.appendRow([d.id, d.tanggal, d.deskripsi, d.kategori, d.jenis, d.nominal,
+    d.metode||"", d.bukti||"", d.catatan||"", new Date().toISOString()]);
+  return { id: d.id };
+}
+
+function updateTransaksi(id, d) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TRANSAKSI);
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(id)) {
+      sh.getRange(i+1,1,1,10).setValues([[d.id||id, d.tanggal, d.deskripsi, d.kategori, d.jenis,
+        d.nominal, d.metode||"", d.bukti||"", d.catatan||"", rows[i][9]]]);
+      return { updated: id };
+    }
+  }
+  throw new Error("Tidak ditemukan: " + id);
+}
+
+function deleteTransaksi(id) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TRANSAKSI);
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(id)) { sh.deleteRow(i+1); return { deleted: id }; }
+  }
+  throw new Error("Tidak ditemukan: " + id);
+}
+
+function bulkSave(transactions) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TRANSAKSI);
+  var last = sh.getLastRow();
+  if (last > 1) sh.deleteRows(2, last - 1);
+  if (transactions && transactions.length > 0) {
+    var rows = [];
+    for (var i = 0; i < transactions.length; i++) {
+      var d = transactions[i];
+      rows.push([d.id, d.tanggal, d.deskripsi, d.kategori, d.jenis, d.nominal,
+        d.metode||"", d.bukti||"", d.catatan||"", d.created_at||new Date().toISOString()]);
+    }
+    sh.getRange(2, 1, rows.length, 10).setValues(rows);
+  }
+  return { saved: transactions ? transactions.length : 0 };
+}
+
+function getLog() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_LOG);
+  var rows = sh.getDataRange().getValues();
+  if (rows.length <= 1) return [];
+  var out = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[0]) continue;
+    out.push({ id: r[0], waktu: r[1], type: r[2], deskripsi: r[3], detail: r[4], alasan: r[5] });
+  }
+  out.reverse();
+  return out;
+}
+
+function addLog(d) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_LOG);
+  sh.appendRow([d.id, d.waktu, d.type, d.deskripsi, d.detail, d.alasan]);
+  return { id: d.id };
+}
+
+function getConfig() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_CONFIG);
+  var rows = sh.getDataRange().getValues();
+  var cfg = {};
+  for (var i = 1; i < rows.length; i++) { cfg[rows[i][0]] = rows[i][1]; }
+  return cfg;
+}
+
+function getSaldoAwal() {
+  return Number(getConfig()["saldo_awal"]) || 5000000;
+}
+
+function setConfig(key, value) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_CONFIG);
+  var rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === key) { sh.getRange(i+1, 2).setValue(value); return { key: key, value: value }; }
+  }
+  sh.appendRow([key, value]);
+  return { key: key, value: value };
+}
+
+function clearAll() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var list = [SHEET_TRANSAKSI, SHEET_LOG];
+  for (var s = 0; s < list.length; s++) {
+    var sh = ss.getSheetByName(list[s]);
+    var last = sh.getLastRow();
+    if (last > 1) sh.deleteRows(2, last - 1);
+  }
+  return { cleared: true };
+}
