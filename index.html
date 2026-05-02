@@ -1,196 +1,1733 @@
-const SHEET_TRANSAKSI = "Transaksi";
-const SHEET_LOG = "Log Revisi";
-const SHEET_CONFIG = "Konfigurasi";
-
-function initSheets() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  function make(name, headers) {
-    var sh = ss.getSheetByName(name);
-    if (!sh) {
-      sh = ss.insertSheet(name);
-      sh.appendRow(headers);
-      sh.getRange(1,1,1,headers.length).setBackground("#0f1e35").setFontColor("#fff").setFontWeight("bold");
-      sh.setFrozenRows(1);
-    }
-    return sh;
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Buku Kas — PT Tumbuh Kreatif Indonesia</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Sora:wght@300;400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --navy: #0f1e35;
+    --navy2: #162840;
+    --teal: #0d9488;
+    --teal2: #14b8a6;
+    --emerald: #059669;
+    --coral: #e11d48;
+    --amber: #d97706;
+    --gold: #f59e0b;
+    --light: #f0fdf9;
+    --card: #ffffff;
+    --border: #d1fae5;
+    --text: #0f1e35;
+    --muted: #64748b;
+    --in: #dcfce7;
+    --in-t: #059669;
+    --out: #ffe4e6;
+    --out-t: #e11d48;
+    --other: #fef3c7;
+    --other-t: #d97706;
+    --radius: 14px;
+    --shadow: 0 4px 24px rgba(15,30,53,.10);
+    --shadow-lg: 0 8px 40px rgba(15,30,53,.16);
   }
-  make(SHEET_TRANSAKSI, ["id","tanggal","deskripsi","kategori","jenis","nominal","metode","bukti","catatan","created_at"]);
-  make(SHEET_LOG,       ["id","waktu","type","deskripsi","detail","alasan"]);
-  make(SHEET_CONFIG,    ["key","value"]);
-  var cfg = ss.getSheetByName(SHEET_CONFIG);
-  var rows = cfg.getDataRange().getValues();
-  var ada = false;
-  for (var i = 0; i < rows.length; i++) { if (rows[i][0] === "saldo_awal") { ada = true; break; } }
-  if (!ada) cfg.appendRow(["saldo_awal", 5000000]);
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:'Sora',sans-serif;background:var(--light);color:var(--text);min-height:100vh;overflow-x:hidden}
+
+  /* ── SIDEBAR ── */
+  .sidebar{position:fixed;left:0;top:0;bottom:0;width:220px;background:var(--navy);display:flex;flex-direction:column;padding:0;z-index:100;box-shadow:4px 0 24px rgba(0,0,0,.18)}
+  .logo{padding:28px 22px 20px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .logo-badge{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:3px;color:var(--teal2);text-transform:uppercase;margin-bottom:6px}
+  .logo-name{font-size:15px;font-weight:800;color:#fff;line-height:1.2}
+  .logo-sub{font-size:10px;color:rgba(255,255,255,.4);margin-top:3px;font-family:'Space Mono',monospace}
+  nav{flex:1;padding:18px 12px;display:flex;flex-direction:column;gap:4px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;cursor:pointer;color:rgba(255,255,255,.55);font-size:13px;font-weight:600;transition:all .18s;border:none;background:none;width:100%;text-align:left}
+  .nav-item:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.9)}
+  .nav-item.active{background:var(--teal);color:#fff;box-shadow:0 2px 12px rgba(13,148,136,.4)}
+  .nav-item .icon{font-size:16px;width:20px;text-align:center}
+  .sidebar-footer{padding:16px;border-top:1px solid rgba(255,255,255,.08);font-size:10px;color:rgba(255,255,255,.25);font-family:'Space Mono',monospace;text-align:center}
+
+  /* ── MAIN ── */
+  .main{margin-left:220px;min-height:100vh;display:flex;flex-direction:column}
+  .topbar{background:#fff;border-bottom:1px solid #e2e8f0;padding:16px 32px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:0 1px 8px rgba(0,0,0,.05)}
+  .topbar-title{font-size:18px;font-weight:800;color:var(--navy)}
+  .topbar-actions{display:flex;gap:10px}
+  .content{flex:1;padding:28px 32px}
+
+  /* ── BUTTONS ── */
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:9px;font-family:'Sora',sans-serif;font-size:13px;font-weight:700;cursor:pointer;border:none;transition:all .18s;white-space:nowrap}
+  .btn-primary{background:var(--teal);color:#fff}
+  .btn-primary:hover{background:var(--teal2);transform:translateY(-1px);box-shadow:0 4px 16px rgba(13,148,136,.3)}
+  .btn-navy{background:var(--navy);color:#fff}
+  .btn-navy:hover{background:var(--navy2);transform:translateY(-1px)}
+  .btn-outline{background:transparent;color:var(--navy);border:2px solid #e2e8f0}
+  .btn-outline:hover{border-color:var(--teal);color:var(--teal)}
+  .btn-coral{background:var(--coral);color:#fff}
+  .btn-coral:hover{background:#be123c;transform:translateY(-1px)}
+  .btn-sm{padding:6px 12px;font-size:12px;border-radius:7px}
+  .btn-ghost{background:transparent;color:var(--muted);border:none;padding:6px 10px;font-size:13px}
+  .btn-ghost:hover{color:var(--coral)}
+
+  /* ── CARDS ── */
+  .card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid #f1f5f9}
+  .card-header{padding:20px 22px 0;display:flex;align-items:center;justify-content:space-between}
+  .card-title{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .card-body{padding:20px 22px}
+
+  /* ── KPI GRID ── */
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+  .kpi-card{border-radius:var(--radius);padding:20px;position:relative;overflow:hidden}
+  .kpi-card::before{content:'';position:absolute;top:-20px;right:-20px;width:80px;height:80px;border-radius:50%;opacity:.12;background:currentColor}
+  .kpi-in{background:var(--in);color:var(--in-t)}
+  .kpi-out{background:var(--out);color:var(--out-t)}
+  .kpi-other{background:var(--other);color:var(--other-t)}
+  .kpi-net{background:var(--navy);color:#fff}
+  .kpi-net::before{background:#fff}
+  .kpi-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75;margin-bottom:8px}
+  .kpi-value{font-family:'Space Mono',monospace;font-size:20px;font-weight:700;line-height:1}
+  .kpi-sub{font-size:11px;margin-top:6px;opacity:.65}
+  .kpi-icon{font-size:26px;position:absolute;top:14px;right:18px;opacity:.25}
+
+  /* ── CHARTS ── */
+  .chart-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px}
+  .chart-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px}
+  .chart-wrap{position:relative}
+  canvas{max-height:260px}
+
+  /* ── TABLE ── */
+  .table-wrap{overflow-x:auto;border-radius:var(--radius)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead tr{background:var(--navy)}
+  thead th{padding:11px 14px;color:#fff;font-weight:700;font-size:11px;text-align:left;letter-spacing:.06em;white-space:nowrap}
+  tbody tr{border-bottom:1px solid #f1f5f9;transition:background .12s}
+  tbody tr:hover{background:#f8fafc}
+  tbody td{padding:10px 14px;vertical-align:middle}
+  .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;white-space:nowrap}
+  .badge-in{background:var(--in);color:var(--in-t)}
+  .badge-out{background:var(--out);color:var(--out-t)}
+  .badge-other{background:var(--other);color:var(--other-t)}
+  .mono{font-family:'Space Mono',monospace;font-size:12px}
+  .saldo{font-family:'Space Mono',monospace;font-weight:700;color:var(--teal);font-size:12px}
+
+  /* ── MODAL ── */
+  .modal-overlay{position:fixed;inset:0;background:rgba(15,30,53,.55);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .22s}
+  .modal-overlay.open{opacity:1;pointer-events:all}
+  .modal{background:#fff;border-radius:18px;width:100%;max-width:560px;box-shadow:var(--shadow-lg);transform:translateY(16px) scale(.98);transition:transform .22s;overflow:hidden}
+  .modal-overlay.open .modal{transform:translateY(0) scale(1)}
+  .modal-header{background:var(--navy);padding:20px 24px;display:flex;align-items:center;justify-content:space-between}
+  .modal-title{font-size:15px;font-weight:800;color:#fff}
+  .modal-body{padding:24px;display:grid;gap:16px}
+  .modal-footer{padding:16px 24px;background:#f8fafc;display:flex;justify-content:flex-end;gap:10px;border-top:1px solid #e2e8f0}
+
+  /* ── FORM ── */
+  .form-group{display:flex;flex-direction:column;gap:6px}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  label{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em}
+  input,select,textarea{padding:10px 14px;border:2px solid #e2e8f0;border-radius:9px;font-family:'Sora',sans-serif;font-size:13px;color:var(--text);outline:none;transition:border-color .15s,box-shadow .15s;width:100%}
+  input:focus,select:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,.12)}
+  select{cursor:pointer}
+  .jenis-toggle{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .jenis-btn{padding:9px;border-radius:9px;border:2px solid #e2e8f0;background:#fff;cursor:pointer;font-family:'Sora',sans-serif;font-size:12px;font-weight:700;text-align:center;transition:all .15s}
+  .jenis-btn.active-in{border-color:var(--in-t);background:var(--in);color:var(--in-t)}
+  .jenis-btn.active-out{border-color:var(--out-t);background:var(--out);color:var(--out-t)}
+  .jenis-btn.active-other{border-color:var(--other-t);background:var(--other);color:var(--other-t)}
+
+  /* ── FILTER BAR ── */
+  .filter-bar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+  .filter-bar input,.filter-bar select{width:auto;flex:1;min-width:140px;padding:8px 12px;font-size:12px}
+  .chip{padding:5px 12px;border-radius:99px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid transparent;transition:all .15s}
+  .chip-all{border-color:#e2e8f0;color:var(--muted)}
+  .chip-all.active,.chip-all:hover{border-color:var(--navy);color:var(--navy)}
+  .chip-in{border-color:var(--in-t);color:var(--in-t)}
+  .chip-in.active{background:var(--in)}
+  .chip-out{border-color:var(--out-t);color:var(--out-t)}
+  .chip-out.active{background:var(--out)}
+  .chip-other{border-color:var(--other-t);color:var(--other-t)}
+  .chip-other.active{background:var(--other)}
+
+  /* ── PAGES ── */
+  .page{display:none}.page.active{display:block}
+
+  /* ── TOAST ── */
+  .toast{position:fixed;bottom:28px;right:28px;background:var(--navy);color:#fff;padding:13px 20px;border-radius:12px;font-size:13px;font-weight:600;box-shadow:var(--shadow-lg);z-index:999;transform:translateY(80px);opacity:0;transition:all .28s;max-width:320px}
+  .toast.show{transform:translateY(0);opacity:1}
+  .toast.success{border-left:4px solid var(--teal2)}
+  .toast.error{border-left:4px solid var(--coral)}
+
+  /* ── MISC ── */
+  .empty-state{text-align:center;padding:48px 24px;color:var(--muted)}
+  .empty-state .empty-icon{font-size:48px;margin-bottom:12px}
+  .empty-state p{font-size:14px}
+  .section-title{font-size:22px;font-weight:800;color:var(--navy);margin-bottom:4px}
+  .section-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+  .divider{height:1px;background:#f1f5f9;margin:4px 0}
+  .text-right{text-align:right}
+  .text-center{text-align:center}
+  .gap-8{display:flex;gap:8px}
+  .mt-4{margin-top:4px}
+  .action-cell{display:flex;gap:6px;justify-content:flex-end}
+  .saldo-awal-row{display:flex;align-items:center;gap:12px;background:var(--other);border-radius:10px;padding:12px 16px;margin-bottom:20px}
+  .saldo-awal-label{font-size:12px;font-weight:700;color:var(--other-t)}
+  .saldo-awal-input{font-family:'Space Mono',monospace;font-size:13px;width:180px;border-color:var(--other-t)!important}
+
+  /* ── RESPONSIVE CHART LEGEND ── */
+  .legend-list{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+  .legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+
+  .import-zone{border:2px dashed #cbd5e1;border-radius:12px;padding:32px;text-align:center;cursor:pointer;transition:all .18s;color:var(--muted)}
+  .import-zone:hover{border-color:var(--teal);color:var(--teal);background:rgba(13,148,136,.04)}
+  .import-zone.drag{border-color:var(--teal);background:rgba(13,148,136,.08)}
+
+  @media(max-width:768px){
+    .sidebar{width:60px}.main{margin-left:60px}
+    .logo-name,.logo-sub,.logo-badge,.nav-item span{display:none}
+    .kpi-grid{grid-template-columns:1fr 1fr}
+    .chart-grid,.chart-grid-3{grid-template-columns:1fr}
+    .content{padding:16px}
+    .topbar{padding:12px 16px}
+    .form-row{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-badge">Buku Kas</div>
+    <div class="logo-name">Tumbuh Kreatif</div>
+    <div class="logo-sub">PT TKI · 2026</div>
+  </div>
+  <nav>
+    <button class="nav-item active" onclick="showPage('dashboard')">
+      <span class="icon">🎯</span><span>Dashboard</span>
+    </button>
+    <button class="nav-item" onclick="showPage('transaksi')">
+      <span class="icon">📒</span><span>Transaksi</span>
+    </button>
+    <button class="nav-item" onclick="showPage('rekap')">
+      <span class="icon">📊</span><span>Rekap Bulanan</span>
+    </button>
+    <button class="nav-item" onclick="showPage('kategori')">
+      <span class="icon">🏷️</span><span>Per Kategori</span>
+    </button>
+    <button class="nav-item" onclick="showPage('revisi')">
+      <span class="icon">✏️</span><span>Revisi Data</span>
+    </button>
+    <button class="nav-item" onclick="showPage('importexport')">
+      <span class="icon">🔄</span><span>Import / Export</span>
+    </button>
+  </nav>
+  <div class="sidebar-footer">v1.1 · TKI 2026</div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="page-title">Dashboard</div>
+    <div class="topbar-actions">
+      <span id="sync-badge" style="font-size:11px;font-weight:700;padding:5px 12px;border-radius:99px;background:#f1f5f9;color:#64748b;letter-spacing:.02em">⚫ Offline (lokal)</span>
+      <button class="btn btn-primary" onclick="openModal()">＋ Tambah Transaksi</button>
+      <button class="btn btn-outline" onclick="exportExcel()">⬇ Export Excel</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ═══ DASHBOARD ═══ -->
+    <div class="page active" id="page-dashboard">
+      <div class="section-title">Dashboard Keuangan</div>
+      <div class="section-sub" id="dash-sub">Ringkasan per hari ini</div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card kpi-in">
+          <div class="kpi-icon">💚</div>
+          <div class="kpi-label">Total Masuk</div>
+          <div class="kpi-value" id="kpi-masuk">Rp 0</div>
+          <div class="kpi-sub" id="kpi-masuk-n">0 transaksi</div>
+        </div>
+        <div class="kpi-card kpi-out">
+          <div class="kpi-icon">❤️</div>
+          <div class="kpi-label">Total Keluar</div>
+          <div class="kpi-value" id="kpi-keluar">Rp 0</div>
+          <div class="kpi-sub" id="kpi-keluar-n">0 transaksi</div>
+        </div>
+        <div class="kpi-card kpi-other">
+          <div class="kpi-icon">🔷</div>
+          <div class="kpi-label">Lainnya</div>
+          <div class="kpi-value" id="kpi-lain">Rp 0</div>
+          <div class="kpi-sub" id="kpi-lain-n">0 transaksi</div>
+        </div>
+        <div class="kpi-card kpi-net">
+          <div class="kpi-icon">💰</div>
+          <div class="kpi-label">Saldo Saat Ini</div>
+          <div class="kpi-value" id="kpi-saldo">Rp 0</div>
+          <div class="kpi-sub" id="kpi-net-flow">Net: Rp 0</div>
+        </div>
+      </div>
+
+      <div class="chart-grid">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Arus Kas Bulanan</span></div>
+          <div class="card-body chart-wrap"><canvas id="chart-bar"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Komposisi Arus Kas</span></div>
+          <div class="card-body chart-wrap"><canvas id="chart-pie"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Tren Saldo Berjalan</span></div>
+        <div class="card-body chart-wrap"><canvas id="chart-line" style="max-height:180px"></canvas></div>
+      </div>
+
+      <div style="margin-top:16px" class="card">
+        <div class="card-header">
+          <span class="card-title">5 Transaksi Terakhir</span>
+          <button class="btn btn-ghost btn-sm" onclick="showPage('transaksi')">Lihat semua →</button>
+        </div>
+        <div class="card-body" style="padding-top:10px">
+          <div class="table-wrap"><table><thead><tr>
+            <th>Tanggal</th><th>Deskripsi</th><th>Kategori</th><th>Jenis</th><th class="text-right">Nominal</th><th class="text-right">Saldo</th>
+          </tr></thead><tbody id="recent-tbody"></tbody></table></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ TRANSAKSI ═══ -->
+    <div class="page" id="page-transaksi">
+      <div class="section-title">Jurnal Transaksi</div>
+      <div class="section-sub">Semua catatan masuk & keluar</div>
+
+      <div class="saldo-awal-row">
+        <span class="saldo-awal-label">💰 Saldo Awal:</span>
+        <input type="number" class="saldo-awal-input" id="saldo-awal-input" value="5000000" onchange="setSaldoAwal(this.value)" placeholder="Saldo awal..."/>
+        <span style="font-size:12px;color:var(--other-t);font-weight:600" id="saldo-awal-display">Rp 5.000.000</span>
+      </div>
+
+      <div class="filter-bar">
+        <input type="text" id="search-input" placeholder="🔍 Cari deskripsi..." oninput="renderTable()"/>
+        <select id="filter-bulan" onchange="renderTable()">
+          <option value="">Semua Bulan</option>
+          <option value="1">Januari</option><option value="2">Februari</option>
+          <option value="3">Maret</option><option value="4">April</option>
+          <option value="5">Mei</option><option value="6">Juni</option>
+          <option value="7">Juli</option><option value="8">Agustus</option>
+          <option value="9">September</option><option value="10">Oktober</option>
+          <option value="11">November</option><option value="12">Desember</option>
+        </select>
+        <select id="filter-kategori" onchange="renderTable()">
+          <option value="">Semua Kategori</option>
+        </select>
+        <span class="chip chip-all active" id="chip-all" onclick="setFilter('')">Semua</span>
+        <span class="chip chip-in" id="chip-in" onclick="setFilter('Masuk')">💚 Masuk</span>
+        <span class="chip chip-out" id="chip-out" onclick="setFilter('Keluar')">❤️ Keluar</span>
+        <span class="chip chip-other" id="chip-other" onclick="setFilter('Lainnya')">🔷 Lainnya</span>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>#</th><th>Tanggal</th><th>Deskripsi</th><th>Kategori</th>
+              <th>Jenis</th><th class="text-right">Masuk</th>
+              <th class="text-right">Keluar</th><th class="text-right">Lainnya</th>
+              <th class="text-right">Saldo</th><th>Metode</th><th>Aksi</th>
+            </tr></thead>
+            <tbody id="main-tbody"></tbody>
+          </table>
+        </div>
+        <div id="table-empty" class="empty-state" style="display:none">
+          <div class="empty-icon">📭</div>
+          <p>Belum ada transaksi. Klik tombol <b>＋ Tambah Transaksi</b> di atas.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ REKAP BULANAN ═══ -->
+    <div class="page" id="page-rekap">
+      <div class="section-title">Rekap Bulanan</div>
+      <div class="section-sub">Ringkasan arus kas per bulan — 2026</div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Arus Kas per Bulan (Bar Chart)</span></div>
+        <div class="card-body chart-wrap"><canvas id="chart-bar2" style="max-height:300px"></canvas></div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><span class="card-title">Tabel Rekap Bulanan</span></div>
+        <div class="card-body" style="padding-top:10px">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Bulan</th>
+                <th class="text-right">💚 Masuk</th>
+                <th class="text-right">❤️ Keluar</th>
+                <th class="text-right">🔷 Lainnya</th>
+                <th class="text-right">💰 Net Cash Flow</th>
+                <th class="text-right">Jml Trx</th>
+              </tr></thead>
+              <tbody id="rekap-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Tren Net Cash Flow</span></div>
+        <div class="card-body chart-wrap"><canvas id="chart-line2" style="max-height:260px"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ═══ PER KATEGORI ═══ -->
+    <div class="page" id="page-kategori">
+      <div class="section-title">Analisis Per Kategori</div>
+      <div class="section-sub">Total seluruh periode berdasarkan kategori</div>
+
+      <div class="chart-grid">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Masuk vs Keluar per Kategori</span></div>
+          <div class="card-body chart-wrap"><canvas id="chart-cat-bar" style="max-height:320px"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Proporsi Pengeluaran</span></div>
+          <div class="card-body chart-wrap"><canvas id="chart-cat-pie" style="max-height:320px"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Tabel Per Kategori</span></div>
+        <div class="card-body" style="padding-top:10px">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Kategori</th>
+                <th class="text-right">Total Masuk</th>
+                <th class="text-right">Total Keluar</th>
+                <th class="text-right">Lainnya</th>
+                <th class="text-right">Net</th>
+                <th class="text-right">% Masuk</th>
+                <th class="text-right">Jml Trx</th>
+              </tr></thead>
+              <tbody id="kat-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ IMPORT / EXPORT ═══ -->
+    <div class="page" id="page-importexport">
+      <div class="section-title">Import & Export Data</div>
+      <div class="section-sub">Sambungkan ke Google Sheets, ekspor ke Excel, atau impor data</div>
+
+      <!-- ── GOOGLE SHEETS SETUP ── -->
+      <div class="card" style="margin-bottom:20px;max-width:760px;border:2px solid #0d9488">
+        <div class="card-header" style="background:#0d9488;margin:-1px;border-radius:14px 14px 0 0;padding:14px 20px">
+          <span style="font-size:13px;font-weight:700;color:#fff;letter-spacing:.06em">☁️ SAMBUNGKAN KE GOOGLE SHEETS</span>
+          <span id="sync-badge-2" style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:99px;background:rgba(255,255,255,.2);color:#fff">Belum tersambung</span>
+        </div>
+        <div class="card-body">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin-bottom:16px">
+            <p style="font-size:13px;font-weight:700;color:#059669;margin-bottom:8px">📋 Cara Setup (sekali saja, ~10 menit):</p>
+            <ol style="font-size:12px;color:#065f46;line-height:2.2;margin-left:16px">
+              <li>Buka <a href="https://sheets.google.com" target="_blank" style="color:#0d9488;font-weight:700">sheets.google.com</a> → buat spreadsheet baru, beri nama <b>Buku Kas TKI</b></li>
+              <li>Klik menu <b>Extensions → Apps Script</b></li>
+              <li>Hapus semua kode yang ada, paste isi file <b>BukuKas_Backend.gs</b> yang sudah lo download</li>
+              <li>Klik ikon Save 💾 → beri nama project <b>BukuKas Backend</b></li>
+              <li>Klik <b>Deploy → New Deployment</b> → Type: <b>Web App</b></li>
+              <li>Execute as: <b>Me</b> · Who has access: <b>Anyone</b> → klik <b>Deploy</b></li>
+              <li>Copy URL deployment yang muncul → paste di kotak di bawah ini</li>
+            </ol>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-end">
+            <div style="flex:1">
+              <label style="font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:6px">URL GOOGLE APPS SCRIPT</label>
+              <input type="url" id="script-url-input" placeholder="https://script.google.com/macros/s/AKf.../exec"
+                style="width:100%;padding:10px 14px;border:2px solid #0d9488;border-radius:9px;font-size:12px;font-family:monospace"
+                oninput="document.getElementById('save-url-btn').style.opacity=1"/>
+            </div>
+            <button id="save-url-btn" class="btn btn-primary" style="flex-shrink:0" onclick="saveScriptUrl()">💾 Sambungkan</button>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:10px">
+            <button class="btn btn-outline btn-sm" onclick="testConnection()">🔌 Test Koneksi</button>
+            <button class="btn btn-outline btn-sm" onclick="manualSync()">🔄 Sync Manual Sekarang</button>
+            <button class="btn btn-ghost btn-sm" onclick="disconnectSheets()" style="color:var(--coral)">✕ Putus Sambungan</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:760px">
+        <div class="card">
+          <div class="card-header"><span class="card-title">⬇ Export</span></div>
+          <div class="card-body">
+            <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Download semua data transaksi dalam format Excel (.xlsx) atau CSV.</p>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <button class="btn btn-primary" onclick="exportExcel()">⬇ Export ke Excel (.xlsx)</button>
+              <button class="btn btn-outline" onclick="exportCSV()">⬇ Export ke CSV</button>
+              <button class="btn btn-outline" onclick="exportJSON()">⬇ Backup JSON</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">⬆ Import</span></div>
+          <div class="card-body">
+            <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Import dari file Excel atau JSON backup. <b>Data yang ada akan digabung.</b></p>
+            <div class="import-zone" id="drop-zone" onclick="document.getElementById('file-input').click()"
+              ondragover="event.preventDefault();this.classList.add('drag')"
+              ondragleave="this.classList.remove('drag')"
+              ondrop="handleDrop(event)">
+              <div style="font-size:32px;margin-bottom:8px">📂</div>
+              <div style="font-size:13px;font-weight:600">Klik atau drag file di sini</div>
+              <div style="font-size:11px;margin-top:4px">.xlsx, .csv, .json</div>
+            </div>
+            <input type="file" id="file-input" style="display:none" accept=".xlsx,.csv,.json" onchange="handleFileImport(this.files[0])"/>
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <button class="btn btn-outline btn-sm" onclick="downloadTemplate()">📋 Download Template</button>
+              <button class="btn btn-coral btn-sm" onclick="clearAllData()">🗑 Hapus Semua Data</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;max-width:760px">
+        <div class="card-header"><span class="card-title">📋 Format Import</span></div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Pastikan file Excel/CSV kamu punya kolom berikut:</p>
+          <div style="overflow-x:auto">
+            <table>
+              <thead><tr><th>Kolom</th><th>Format</th><th>Wajib?</th><th>Contoh</th></tr></thead>
+              <tbody>
+                <tr><td><b>tanggal</b></td><td>YYYY-MM-DD atau DD/MM/YYYY</td><td>✅</td><td>2026-05-01</td></tr>
+                <tr><td><b>deskripsi</b></td><td>Teks bebas</td><td>✅</td><td>Bayar listrik</td></tr>
+                <tr><td><b>kategori</b></td><td>Pilih dari daftar</td><td>✅</td><td>Utilitas</td></tr>
+                <tr><td><b>jenis</b></td><td>Masuk / Keluar / Lainnya</td><td>✅</td><td>Keluar</td></tr>
+                <tr><td><b>nominal</b></td><td>Angka (tanpa titik/koma)</td><td>✅</td><td>500000</td></tr>
+                <tr><td><b>metode</b></td><td>Teks bebas</td><td>❌</td><td>Transfer Bank</td></tr>
+                <tr><td><b>bukti</b></td><td>Teks bebas</td><td>❌</td><td>INV-001</td></tr>
+                <tr><td><b>catatan</b></td><td>Teks bebas</td><td>❌</td><td>DP 50%</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ REVISI DATA ═══ -->
+    <div class="page" id="page-revisi">
+      <div class="section-title">✏️ Revisi & Koreksi Data</div>
+      <div class="section-sub">Cari, edit, atau hapus transaksi yang salah input — lengkap dengan log aktivitas</div>
+
+      <!-- Quick search box -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-body" style="padding:16px 20px">
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+            <input type="text" id="revisi-search" placeholder="🔍 Cari deskripsi, kategori, nominal..." style="flex:1;min-width:200px" oninput="renderRevisiTable()"/>
+            <select id="revisi-filter-jenis" onchange="renderRevisiTable()" style="width:auto">
+              <option value="">Semua Jenis</option>
+              <option value="Masuk">💚 Masuk</option>
+              <option value="Keluar">❤️ Keluar</option>
+              <option value="Lainnya">🔷 Lainnya</option>
+            </select>
+            <select id="revisi-filter-bulan" onchange="renderRevisiTable()" style="width:auto">
+              <option value="">Semua Bulan</option>
+              <option value="1">Januari</option><option value="2">Februari</option>
+              <option value="3">Maret</option><option value="4">April</option>
+              <option value="5">Mei</option><option value="6">Juni</option>
+              <option value="7">Juli</option><option value="8">Agustus</option>
+              <option value="9">September</option><option value="10">Oktober</option>
+              <option value="11">November</option><option value="12">Desember</option>
+            </select>
+            <span style="font-size:12px;color:var(--muted)" id="revisi-count-label">— transaksi</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Revisi table - wider action column, sticky -->
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-header" style="padding-bottom:12px">
+          <span class="card-title">📋 Daftar Transaksi</span>
+          <span style="font-size:12px;color:var(--muted)">Klik tombol ✏️ Edit atau 🗑 Hapus di kolom Aksi</span>
+        </div>
+        <div class="table-wrap">
+          <table id="revisi-table">
+            <thead><tr>
+              <th style="width:42px">#</th>
+              <th>Tanggal</th>
+              <th>Deskripsi</th>
+              <th>Kategori</th>
+              <th>Jenis</th>
+              <th class="text-right">Nominal</th>
+              <th>Metode</th>
+              <th style="min-width:160px;text-align:center">⚙️ AKSI</th>
+            </tr></thead>
+            <tbody id="revisi-tbody"></tbody>
+          </table>
+        </div>
+        <div id="revisi-empty" class="empty-state" style="display:none">
+          <div class="empty-icon">🔍</div>
+          <p>Tidak ada transaksi yang cocok dengan pencarian.</p>
+        </div>
+      </div>
+
+      <!-- Log aktivitas -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📜 Log Aktivitas Revisi</span>
+          <button class="btn btn-ghost btn-sm" onclick="clearLog()" style="color:var(--coral)">Bersihkan Log</button>
+        </div>
+        <div class="card-body" style="padding-top:10px">
+          <div id="log-empty" style="text-align:center;padding:24px;color:var(--muted);font-size:13px">
+            Belum ada aktivitas revisi yang tercatat.
+          </div>
+          <div id="log-list" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- ═══ MODAL TAMBAH / EDIT TRANSAKSI ═══ -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-header" id="modal-header-bar">
+      <span class="modal-title" id="modal-title">＋ Tambah Transaksi</span>
+      <button class="btn-ghost" onclick="closeModal()" style="color:#fff;font-size:18px">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Preview data lama (hanya muncul saat edit) -->
+      <div id="edit-preview" style="display:none;background:#fef9c3;border:1.5px solid #f59e0b;border-radius:10px;padding:12px 16px">
+        <div style="font-size:11px;font-weight:700;color:#92400e;letter-spacing:.06em;margin-bottom:8px">📋 DATA SEBELUM DIEDIT</div>
+        <div id="edit-preview-content" style="font-size:12px;color:#78350f;line-height:2;font-family:'Space Mono',monospace"></div>
+      </div>
+
+      <div class="form-group">
+        <label>JENIS TRANSAKSI</label>
+        <div class="jenis-toggle">
+          <button class="jenis-btn" id="jbtn-in" onclick="setJenis('Masuk')">💚 Masuk</button>
+          <button class="jenis-btn" id="jbtn-out" onclick="setJenis('Keluar')">❤️ Keluar</button>
+          <button class="jenis-btn" id="jbtn-other" onclick="setJenis('Lainnya')">🔷 Lainnya</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>TANGGAL</label>
+          <input type="date" id="f-tanggal"/>
+        </div>
+        <div class="form-group">
+          <label>NOMINAL (Rp)</label>
+          <input type="number" id="f-nominal" placeholder="0" min="0"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>DESKRIPSI</label>
+        <input type="text" id="f-deskripsi" placeholder="Keterangan transaksi..."/>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>KATEGORI</label>
+          <select id="f-kategori">
+            <option value="">-- Pilih --</option>
+            <option>Penjualan</option><option>Jasa</option><option>Modal</option>
+            <option>Piutang Diterima</option><option>Gaji</option><option>Sewa</option>
+            <option>Belanja Operasional</option><option>Utilitas</option>
+            <option>Marketing</option><option>Pajak</option><option>Transportasi</option>
+            <option>Pinjaman</option><option>Investasi</option><option>Lain-lain</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>METODE BAYAR</label>
+          <select id="f-metode">
+            <option value="">-- Pilih --</option>
+            <option>Transfer Bank</option><option>Tunai</option><option>QRIS</option>
+            <option>Kartu Debit</option><option>Kartu Kredit</option>
+            <option>Dompet Digital</option><option>Cek/Giro</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>NO. BUKTI (Opsional)</label>
+          <input type="text" id="f-bukti" placeholder="INV-001 / BON-001"/>
+        </div>
+        <div class="form-group">
+          <label>CATATAN (Opsional)</label>
+          <input type="text" id="f-catatan" placeholder="Keterangan tambahan..."/>
+        </div>
+      </div>
+      <!-- Alasan revisi — hanya muncul saat edit -->
+      <div class="form-group" id="alasan-group" style="display:none">
+        <label style="color:#d97706">⚠️ ALASAN REVISI (wajib diisi)</label>
+        <input type="text" id="f-alasan" placeholder="Contoh: Nominal salah input, kategori keliru, dll..." style="border-color:#f59e0b"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Batal</button>
+      <button class="btn btn-primary" id="save-btn" onclick="saveTransaction()">💾 Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL KONFIRMASI HAPUS ═══ -->
+<div class="modal-overlay" id="delete-overlay">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header" style="background:#e11d48">
+      <span class="modal-title">🗑 Konfirmasi Hapus Transaksi</span>
+      <button class="btn-ghost" onclick="closeDeleteModal()" style="color:#fff;font-size:18px">✕</button>
+    </div>
+    <div class="modal-body" style="gap:14px">
+      <div style="background:#ffe4e6;border:1.5px solid #fca5a5;border-radius:10px;padding:14px 16px">
+        <div style="font-size:11px;font-weight:700;color:#e11d48;letter-spacing:.06em;margin-bottom:8px">⚠️ DATA YANG AKAN DIHAPUS</div>
+        <div id="delete-preview" style="font-size:12px;color:#3f0f18;line-height:2;font-family:'Space Mono',monospace"></div>
+      </div>
+      <div class="form-group">
+        <label style="color:#e11d48">ALASAN HAPUS (wajib diisi)</label>
+        <input type="text" id="delete-alasan" placeholder="Contoh: Data duplikat, salah catat, pembatalan, dll..." style="border-color:#fca5a5"/>
+      </div>
+      <p style="font-size:11px;color:var(--muted);background:#f8fafc;padding:10px;border-radius:8px">
+        ℹ️ Penghapusan akan dicatat di <b>Log Aktivitas</b> di halaman Revisi Data. Data tidak bisa dikembalikan setelah dihapus.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeDeleteModal()">Batal, Jangan Hapus</button>
+      <button class="btn btn-coral" onclick="confirmDelete()">🗑 Ya, Hapus Sekarang</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+const STORAGE_KEY = 'tki_buku_kas';
+let transactions = [];
+let saldoAwal = 5000000;
+let editId = null;
+let deleteId = null;
+let filterJenis = '';
+let activityLog = [];
+let chartBar, chartPie, chartLine, chartBar2, chartLine2, chartCatBar, chartCatPie;
+
+const BULAN = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+const KATEGORI_LIST = ['Penjualan','Jasa','Modal','Piutang Diterima','Gaji','Sewa',
+  'Belanja Operasional','Utilitas','Marketing','Pajak','Transportasi','Pinjaman','Investasi','Lain-lain'];
+
+const COLORS = {
+  teal:'#0d9488', coral:'#e11d48', amber:'#f59e0b', navy:'#0f1e35',
+  emerald:'#059669', gold:'#d97706', purple:'#7c3aed', slate:'#64748b',
+  rose:'#f43f5e', sky:'#0ea5e9', lime:'#65a30d', orange:'#ea580c',
+  violet:'#8b5cf6', pink:'#ec4899',
+};
+const CAT_COLORS = Object.values(COLORS);
+
+// ═══════════════════════════════════════════════════════════════════
+// GOOGLE SHEETS CONFIG
+// ═══════════════════════════════════════════════════════════════════
+let SCRIPT_URL = localStorage.getItem('tki_script_url') || '';
+let syncStatus = 'offline'; // 'offline' | 'syncing' | 'ok' | 'error'
+
+function setScriptUrl(url) {
+  SCRIPT_URL = url.trim();
+  localStorage.setItem('tki_script_url', SCRIPT_URL);
+  updateSyncBadge();
 }
 
-function jsonpOut(callback, obj) {
-  var json = JSON.stringify(obj);
-  var out = callback ? callback + "(" + json + ")" : json;
-  return ContentService.createTextOutput(out)
-    .setMimeType(callback ? ContentService.MimeType.JAVASCRIPT : ContentService.MimeType.JSON);
+function updateSyncBadge() {
+  const badge = document.getElementById('sync-badge');
+  if (!badge) return;
+  const labels = {
+    offline: '⚫ Offline (lokal)',
+    syncing: '🔄 Menyinkron...',
+    ok:      '🟢 Tersambung ke Sheets',
+    error:   '🔴 Gagal konek ke Sheets',
+  };
+  badge.textContent = labels[syncStatus] || syncStatus;
+  badge.style.background = {offline:'#f1f5f9',syncing:'#fef3c7',ok:'#dcfce7',error:'#ffe4e6'}[syncStatus]||'#f1f5f9';
+  badge.style.color = {offline:'#64748b',syncing:'#d97706',ok:'#059669',error:'#e11d48'}[syncStatus]||'#64748b';
 }
 
-function ok(cb, data)  { return jsonpOut(cb, { status: "ok",    data: data    }); }
-function err(cb, msg)  { return jsonpOut(cb, { status: "error", message: msg  }); }
+async function apiGet(action) {
+  if (!SCRIPT_URL) return null;
+  return new Promise(function(resolve, reject) {
+    var cbName = 'cb_' + Date.now();
+    var script = document.createElement('script');
+    var done = false;
+    var timer = setTimeout(function() {
+      if (done) return;
+      done = true;
+      delete window[cbName];
+      document.body.removeChild(script);
+      reject(new Error('Timeout'));
+    }, 10000);
+    window[cbName] = function(json) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      delete window[cbName];
+      document.body.removeChild(script);
+      if (json.status !== 'ok') reject(new Error(json.message || 'API error'));
+      else resolve(json.data);
+    };
+    script.src = SCRIPT_URL + '?action=' + action + '&callback=' + cbName;
+    script.onerror = function() {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      delete window[cbName];
+      document.body.removeChild(script);
+      reject(new Error('Script load error'));
+    };
+    document.body.appendChild(script);
+  });
+}
 
-function doGet(e) {
-  var cb = e.parameter.callback || "";
-  try {
-    initSheets();
-    var a = e.parameter.action || "ping";
-    if (a === "ping")         return ok(cb, { message: "Backend aktif", ts: new Date().toISOString() });
-    if (a === "getAll")       return ok(cb, getAllData());
-    if (a === "getTransaksi") return ok(cb, getTransaksi());
-    if (a === "getLog")       return ok(cb, getLog());
-    if (a === "getConfig")    return ok(cb, getConfig());
-    // Handle POST via GET with payload param (JSONP workaround)
-    if (e.parameter.payload) {
-      var body = JSON.parse(e.parameter.payload);
-      return handleAction(cb, body);
+async function apiPost(body) {
+  if (!SCRIPT_URL) return null;
+  return new Promise(function(resolve, reject) {
+    var cbName = 'cb_' + Date.now();
+    var script = document.createElement('script');
+    var done = false;
+    var timer = setTimeout(function() {
+      if (done) return;
+      done = true;
+      delete window[cbName];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      reject(new Error('Timeout'));
+    }, 15000);
+    window[cbName] = function(json) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      delete window[cbName];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      if (json.status !== 'ok') reject(new Error(json.message || 'API error'));
+      else resolve(json.data);
+    };
+    var params = '?callback=' + cbName + '&payload=' + encodeURIComponent(JSON.stringify(body));
+    script.src = SCRIPT_URL + params;
+    script.onerror = function() {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      delete window[cbName];
+      if (document.body.contains(script)) document.body.removeChild(script);
+      reject(new Error('Script load error'));
+    };
+    document.body.appendChild(script);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STORAGE — hybrid: localStorage + Google Sheets
+// ═══════════════════════════════════════════════════════════════════
+function saveLocal() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({transactions, saldoAwal, activityLog})); } catch(e) {}
+}
+
+// save = simpan lokal dulu (instant), lalu sync ke Sheets di background
+function save() {
+  saveLocal();
+  syncToSheets();
+}
+
+let _syncTimer = null;
+function syncToSheets() {
+  if (!SCRIPT_URL) return;
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(async () => {
+    try {
+      syncStatus = 'syncing'; updateSyncBadge();
+      await apiPost({ action:'bulkSave', transactions });
+      await apiPost({ action:'setConfig', key:'saldo_awal', value:saldoAwal });
+      syncStatus = 'ok'; updateSyncBadge();
+    } catch(e) {
+      syncStatus = 'error'; updateSyncBadge();
+      console.warn('Sync gagal:', e.message);
     }
-    return err(cb, "Aksi tidak dikenal: " + a);
-  } catch(ex) { return err(cb, ex.message); }
+  }, 800); // debounce 800ms
 }
 
-function doPost(e) {
-  var cb = "";
+async function loadFromSheets() {
+  if (!SCRIPT_URL) return false;
   try {
-    initSheets();
-    var body = JSON.parse(e.postData.contents);
-    return handleAction(cb, body);
-  } catch(ex) { return err(cb, ex.message); }
+    syncStatus = 'syncing'; updateSyncBadge();
+    const data = await apiGet('getAll');
+    if (!data) return false;
+    transactions  = data.transaksi  || [];
+    activityLog   = data.log        || [];
+    saldoAwal     = data.saldoAwal  || 5000000;
+    saveLocal();
+    syncStatus = 'ok'; updateSyncBadge();
+    return true;
+  } catch(e) {
+    syncStatus = 'error'; updateSyncBadge();
+    console.warn('Load dari Sheets gagal, pakai data lokal:', e.message);
+    return false;
+  }
 }
 
-function handleAction(cb, body) {
-  var a = body.action;
-  if (a === "saveTransaksi")   return ok(cb, saveTransaksi(body.data));
-  if (a === "updateTransaksi") return ok(cb, updateTransaksi(body.id, body.data));
-  if (a === "deleteTransaksi") return ok(cb, deleteTransaksi(body.id));
-  if (a === "addLog")          return ok(cb, addLog(body.data));
-  if (a === "setConfig")       return ok(cb, setConfig(body.key, body.value));
-  if (a === "bulkSave")        return ok(cb, bulkSave(body.transactions));
-  if (a === "clearAll")        return ok(cb, clearAll());
-  return err(cb, "Aksi tidak dikenal: " + a);
+async function load() {
+  // 1. Load lokal dulu (instant, tidak perlu tunggu)
+  try {
+    const d = JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');
+    transactions  = d.transactions  || [];
+    saldoAwal     = d.saldoAwal     || 5000000;
+    activityLog   = d.activityLog   || [];
+    document.getElementById('saldo-awal-input').value = saldoAwal;
+    updateSaldoAwalDisplay();
+  } catch(e) { transactions=[]; saldoAwal=5000000; activityLog=[]; }
+
+  if (!transactions.length) seedSample();
+  renderAll(); // tampilkan data lokal segera
+
+  // 2. Coba ambil dari Sheets (async, replace jika berhasil)
+  if (SCRIPT_URL) {
+    const ok = await loadFromSheets();
+    if (ok) {
+      document.getElementById('saldo-awal-input').value = saldoAwal;
+      updateSaldoAwalDisplay();
+      renderAll();
+      showToast('✅ Data dimuat dari Google Sheets', 'success');
+    }
+  } else {
+    syncStatus = 'offline'; updateSyncBadge();
+  }
 }
 
-function getAllData() {
-  return { transaksi: getTransaksi(), log: getLog(), saldoAwal: getSaldoAwal() };
+function seedSample(){
+  const samples = [
+    {id:uid(),tanggal:'2026-05-01',deskripsi:'Pembayaran klien FIF Group - batch 1',kategori:'Jasa',jenis:'Masuk',nominal:15000000,metode:'Transfer Bank',bukti:'INV-001',catatan:'DP 50%'},
+    {id:uid(),tanggal:'2026-05-02',deskripsi:'Langganan Zoom Pro bulanan',kategori:'Utilitas',jenis:'Keluar',nominal:215000,metode:'Kartu Debit',bukti:'ZOOM-05',catatan:''},
+    {id:uid(),tanggal:'2026-05-03',deskripsi:'Cetak materi workshop FIFPreneur',kategori:'Belanja Operasional',jenis:'Keluar',nominal:750000,metode:'Transfer Bank',bukti:'KW-045',catatan:''},
+    {id:uid(),tanggal:'2026-05-05',deskripsi:'Honor narasumber sesi 2',kategori:'Gaji',jenis:'Keluar',nominal:2000000,metode:'Transfer Bank',bukti:'HR-002',catatan:''},
+    {id:uid(),tanggal:'2026-05-07',deskripsi:'Pendapatan konsultasi tambahan',kategori:'Jasa',jenis:'Masuk',nominal:3500000,metode:'QRIS',bukti:'INV-002',catatan:''},
+    {id:uid(),tanggal:'2026-05-08',deskripsi:'Biaya transportasi site visit',kategori:'Transportasi',jenis:'Keluar',nominal:320000,metode:'Tunai',bukti:'BON-01',catatan:''},
+    {id:uid(),tanggal:'2026-05-10',deskripsi:'Refund kelebihan pembayaran vendor',kategori:'Piutang Diterima',jenis:'Lainnya',nominal:500000,metode:'Transfer Bank',bukti:'REF-01',catatan:'Refund vendor'},
+  ];
+  transactions = samples;
+  saveLocal();
+}
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+
+// ═══════════════════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════════════════
+const PAGE_TITLES = {dashboard:'Dashboard',transaksi:'Jurnal Transaksi',rekap:'Rekap Bulanan',kategori:'Per Kategori',revisi:'✏️ Revisi & Koreksi Data',importexport:'Import & Export'};
+function showPage(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach((b,i)=>{
+    const pages=['dashboard','transaksi','rekap','kategori','revisi','importexport'];
+    b.classList.toggle('active', pages[i]===name);
+  });
+  document.getElementById('page-title').textContent = PAGE_TITLES[name];
+  if(name==='dashboard') renderDashboard();
+  if(name==='transaksi') renderTable();
+  if(name==='rekap') renderRekap();
+  if(name==='kategori') renderKategori();
+  if(name==='revisi') renderRevisiTable();
+  populateKategoriFilter();
 }
 
-function getTransaksi() {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TRANSAKSI);
-  var rows = sh.getDataRange().getValues();
-  if (rows.length <= 1) return [];
-  var out = [];
-  for (var i = 1; i < rows.length; i++) {
-    var r = rows[i];
-    if (!r[0]) continue;
-    out.push({
-      id: r[0],
-      tanggal: r[1] instanceof Date ? Utilities.formatDate(r[1], "Asia/Jakarta", "yyyy-MM-dd") : String(r[1]),
-      deskripsi: r[2], kategori: r[3], jenis: r[4],
-      nominal: Number(r[5]) || 0,
-      metode: r[6], bukti: r[7], catatan: r[8], created_at: r[9]
+// ═══════════════════════════════════════════════════════════════════
+// FORMAT HELPERS
+// ═══════════════════════════════════════════════════════════════════
+function fmt(n){ return 'Rp '+Math.abs(n).toLocaleString('id-ID'); }
+function fmtShort(n){ if(n>=1e9) return 'Rp '+(n/1e9).toFixed(1)+'M'; if(n>=1e6) return 'Rp '+(n/1e6).toFixed(1)+'jt'; return 'Rp '+n.toLocaleString('id-ID'); }
+function fmtDate(d){ if(!d) return '-'; const p=d.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+function parseDate(s){ return new Date(s+'T00:00:00'); }
+
+// ═══════════════════════════════════════════════════════════════════
+// COMPUTE SALDO
+// ═══════════════════════════════════════════════════════════════════
+function getSorted(){ return [...transactions].sort((a,b)=>a.tanggal.localeCompare(b.tanggal)); }
+function computeSaldos(){
+  const sorted = getSorted();
+  let saldo = saldoAwal;
+  const map = {};
+  sorted.forEach(t=>{
+    if(t.jenis==='Masuk') saldo+=t.nominal;
+    else if(t.jenis==='Keluar') saldo-=t.nominal;
+    else saldo+=t.nominal;
+    map[t.id]=saldo;
+  });
+  return map;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MODAL
+// ═══════════════════════════════════════════════════════════════════
+let selectedJenis = 'Masuk';
+function openModal(id=null){
+  editId = id;
+  const t = id ? transactions.find(x=>x.id===id) : null;
+  const isEdit = !!id;
+
+  document.getElementById('modal-title').textContent = isEdit ? '✏️ Edit / Revisi Transaksi' : '＋ Tambah Transaksi';
+  document.getElementById('modal-header-bar').style.background = isEdit ? '#d97706' : '';
+  document.getElementById('f-tanggal').value = t?.tanggal || new Date().toISOString().slice(0,10);
+  document.getElementById('f-nominal').value = t?.nominal || '';
+  document.getElementById('f-deskripsi').value = t?.deskripsi || '';
+  document.getElementById('f-kategori').value = t?.kategori || '';
+  document.getElementById('f-metode').value = t?.metode || '';
+  document.getElementById('f-bukti').value = t?.bukti || '';
+  document.getElementById('f-catatan').value = t?.catatan || '';
+  document.getElementById('f-alasan').value = '';
+  setJenis(t?.jenis || 'Masuk');
+
+  // Show/hide preview & alasan
+  const previewEl = document.getElementById('edit-preview');
+  const alasanEl = document.getElementById('alasan-group');
+  if(isEdit && t){
+    previewEl.style.display = 'block';
+    alasanEl.style.display = 'block';
+    document.getElementById('edit-preview-content').innerHTML =
+      `Tanggal : ${fmtDate(t.tanggal)}<br>` +
+      `Deskripsi: ${t.deskripsi}<br>` +
+      `Kategori : ${t.kategori} | Jenis: ${t.jenis}<br>` +
+      `Nominal  : ${fmt(t.nominal)}<br>` +
+      `Metode   : ${t.metode||'—'} | Bukti: ${t.bukti||'—'}`;
+  } else {
+    previewEl.style.display = 'none';
+    alasanEl.style.display = 'none';
+  }
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function closeModal(){ document.getElementById('modal-overlay').classList.remove('open'); editId=null; }
+function setJenis(j){
+  selectedJenis=j;
+  ['in','out','other'].forEach(x=>document.getElementById('jbtn-'+x).className='jenis-btn');
+  if(j==='Masuk') document.getElementById('jbtn-in').className='jenis-btn active-in';
+  if(j==='Keluar') document.getElementById('jbtn-out').className='jenis-btn active-out';
+  if(j==='Lainnya') document.getElementById('jbtn-other').className='jenis-btn active-other';
+}
+function saveTransaction(){
+  const tanggal=document.getElementById('f-tanggal').value;
+  const nominal=parseFloat(document.getElementById('f-nominal').value)||0;
+  const deskripsi=document.getElementById('f-deskripsi').value.trim();
+  const kategori=document.getElementById('f-kategori').value;
+  const alasan=document.getElementById('f-alasan').value.trim();
+
+  if(!tanggal||!deskripsi||!kategori||nominal<=0){
+    showToast('Isi Tanggal, Deskripsi, Kategori, dan Nominal dulu ya!','error');return;
+  }
+  if(editId && !alasan){
+    showToast('Wajib isi Alasan Revisi sebelum menyimpan perubahan!','error');
+    document.getElementById('f-alasan').focus();
+    return;
+  }
+
+  const oldData = editId ? transactions.find(t=>t.id===editId) : null;
+  const data={id:editId||uid(),tanggal,nominal,deskripsi,kategori,jenis:selectedJenis,
+    metode:document.getElementById('f-metode').value,
+    bukti:document.getElementById('f-bukti').value,
+    catatan:document.getElementById('f-catatan').value};
+
+  if(editId){
+    transactions=transactions.map(t=>t.id===editId?data:t);
+    // Log the edit
+    addLog({
+      type:'edit',
+      waktu: new Date().toLocaleString('id-ID'),
+      deskripsi: `Edit: "${oldData.deskripsi}" → "${deskripsi}"`,
+      detail: `Nominal: ${fmt(oldData.nominal)} → ${fmt(nominal)} | Jenis: ${oldData.jenis} → ${selectedJenis} | Kategori: ${oldData.kategori} → ${kategori}`,
+      alasan,
     });
+  } else {
+    transactions.push(data);
   }
-  return out;
+  save(); closeModal(); renderAll();
+  showToast(editId?'Transaksi direvisi & disimpan ✅':'Transaksi disimpan ✅','success');
+}
+function deleteTransaction(id){
+  deleteId = id;
+  const t = transactions.find(x=>x.id===id);
+  if(!t) return;
+  document.getElementById('delete-preview').innerHTML =
+    `Tanggal : ${fmtDate(t.tanggal)}<br>` +
+    `Deskripsi: ${t.deskripsi}<br>` +
+    `Kategori : ${t.kategori} | Jenis: ${t.jenis}<br>` +
+    `Nominal  : ${fmt(t.nominal)}<br>` +
+    `Metode   : ${t.metode||'—'} | Bukti: ${t.bukti||'—'}`;
+  document.getElementById('delete-alasan').value = '';
+  document.getElementById('delete-overlay').classList.add('open');
+}
+function closeDeleteModal(){
+  document.getElementById('delete-overlay').classList.remove('open');
+  deleteId = null;
+}
+function confirmDelete(){
+  const alasan = document.getElementById('delete-alasan').value.trim();
+  if(!alasan){ showToast('Wajib isi Alasan Hapus sebelum menghapus!','error'); document.getElementById('delete-alasan').focus(); return; }
+  const t = transactions.find(x=>x.id===deleteId);
+  if(!t) return;
+  addLog({
+    type:'delete',
+    waktu: new Date().toLocaleString('id-ID'),
+    deskripsi: `Hapus: "${t.deskripsi}" (${fmtDate(t.tanggal)}, ${fmt(t.nominal)})`,
+    detail: `Jenis: ${t.jenis} | Kategori: ${t.kategori} | Metode: ${t.metode||'—'}`,
+    alasan,
+  });
+  transactions = transactions.filter(x=>x.id!==deleteId);
+  save(); closeDeleteModal(); renderAll();
+  showToast('Transaksi dihapus & dicatat di log ✅','success');
 }
 
-function saveTransaksi(d) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TRANSAKSI);
-  sh.appendRow([d.id, d.tanggal, d.deskripsi, d.kategori, d.jenis, d.nominal,
-    d.metode||"", d.bukti||"", d.catatan||"", new Date().toISOString()]);
-  return { id: d.id };
+// ═══════════════════════════════════════════════════════════════════
+// SALDO AWAL
+// ═══════════════════════════════════════════════════════════════════
+function setSaldoAwal(v){
+  saldoAwal=parseFloat(v)||0;
+  save(); // triggers syncToSheets
+  renderAll();
+  updateSaldoAwalDisplay();
+}
+function updateSaldoAwalDisplay(){ document.getElementById('saldo-awal-display').textContent=fmt(saldoAwal); }
+
+// ═══════════════════════════════════════════════════════════════════
+// FILTER
+// ═══════════════════════════════════════════════════════════════════
+function setFilter(j){
+  filterJenis=j;
+  ['all','in','out','other'].forEach(x=>document.getElementById('chip-'+x).classList.remove('active'));
+  if(j==='') document.getElementById('chip-all').classList.add('active');
+  if(j==='Masuk') document.getElementById('chip-in').classList.add('active');
+  if(j==='Keluar') document.getElementById('chip-out').classList.add('active');
+  if(j==='Lainnya') document.getElementById('chip-other').classList.add('active');
+  renderTable();
+}
+function populateKategoriFilter(){
+  const sel=document.getElementById('filter-kategori');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">Semua Kategori</option>';
+  KATEGORI_LIST.forEach(k=>{ const o=document.createElement('option');o.value=k;o.textContent=k;sel.appendChild(o); });
+  sel.value=cur;
 }
 
-function updateTransaksi(id, d) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TRANSAKSI);
-  var rows = sh.getDataRange().getValues();
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(id)) {
-      sh.getRange(i+1,1,1,10).setValues([[d.id||id, d.tanggal, d.deskripsi, d.kategori, d.jenis,
-        d.nominal, d.metode||"", d.bukti||"", d.catatan||"", rows[i][9]]]);
-      return { updated: id };
-    }
+// ═══════════════════════════════════════════════════════════════════
+// RENDER TABLE
+// ═══════════════════════════════════════════════════════════════════
+function renderTable(){
+  const sorted=getSorted();
+  const saldos=computeSaldos();
+  const q=(document.getElementById('search-input')?.value||'').toLowerCase();
+  const bln=document.getElementById('filter-bulan')?.value||'';
+  const kat=document.getElementById('filter-kategori')?.value||'';
+
+  const filtered=sorted.filter(t=>{
+    if(filterJenis && t.jenis!==filterJenis) return false;
+    if(q && !t.deskripsi.toLowerCase().includes(q)) return false;
+    if(bln && parseInt(t.tanggal.split('-')[1])!==parseInt(bln)) return false;
+    if(kat && t.kategori!==kat) return false;
+    return true;
+  });
+
+  const tbody=document.getElementById('main-tbody');
+  const empty=document.getElementById('table-empty');
+  if(!filtered.length){ tbody.innerHTML=''; empty.style.display=''; return; }
+  empty.style.display='none';
+
+  tbody.innerHTML=filtered.map((t,i)=>{
+    const nominalDisplay = t.jenis==='Masuk'?`<span style="color:var(--in-t);font-family:'Space Mono',monospace;font-size:12px">+${fmt(t.nominal)}</span>`:
+      t.jenis==='Keluar'?`<span style="color:var(--out-t);font-family:'Space Mono',monospace;font-size:12px">-${fmt(t.nominal)}</span>`:
+      `<span style="color:var(--other-t);font-family:'Space Mono',monospace;font-size:12px">${fmt(t.nominal)}</span>`;
+    const masuk = t.jenis==='Masuk'?`<span class="mono" style="color:var(--in-t)">${fmt(t.nominal)}</span>`:'<span style="color:#cbd5e1">—</span>';
+    const keluar = t.jenis==='Keluar'?`<span class="mono" style="color:var(--out-t)">${fmt(t.nominal)}</span>`:'<span style="color:#cbd5e1">—</span>';
+    const lain = t.jenis==='Lainnya'?`<span class="mono" style="color:var(--other-t)">${fmt(t.nominal)}</span>`:'<span style="color:#cbd5e1">—</span>';
+    const badge = t.jenis==='Masuk'?`<span class="badge badge-in">💚 Masuk</span>`:
+      t.jenis==='Keluar'?`<span class="badge badge-out">❤️ Keluar</span>`:
+      `<span class="badge badge-other">🔷 Lainnya</span>`;
+    const s=saldos[t.id]||0;
+    return `<tr>
+      <td style="color:var(--muted);font-size:11px">${i+1}</td>
+      <td style="white-space:nowrap;font-size:12px">${fmtDate(t.tanggal)}</td>
+      <td style="max-width:220px"><div style="font-weight:600;font-size:13px">${t.deskripsi}</div>${t.catatan?`<div style="font-size:11px;color:var(--muted)">${t.catatan}</div>`:''}</td>
+      <td><span style="font-size:11px;background:#f1f5f9;padding:3px 8px;border-radius:6px;font-weight:600;color:var(--muted)">${t.kategori}</span></td>
+      <td>${badge}</td>
+      <td class="text-right">${masuk}</td>
+      <td class="text-right">${keluar}</td>
+      <td class="text-right">${lain}</td>
+      <td class="text-right"><span class="saldo">${fmt(s)}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${t.metode||'—'}</td>
+      <td><div class="action-cell">
+        <button style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:#f59e0b;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Sora',sans-serif" onclick="openModal('${t.id}')">✏️ Edit</button>
+        <button style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:#fff;color:#e11d48;border:2px solid #fca5a5;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Sora',sans-serif" onclick="deleteTransaction('${t.id}')">🗑</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER REVISI TABLE
+// ═══════════════════════════════════════════════════════════════════
+function renderRevisiTable(){
+  const sorted = getSorted();
+  const q = (document.getElementById('revisi-search')?.value||'').toLowerCase();
+  const jenis = document.getElementById('revisi-filter-jenis')?.value||'';
+  const bln = document.getElementById('revisi-filter-bulan')?.value||'';
+
+  const filtered = sorted.filter(t=>{
+    if(jenis && t.jenis!==jenis) return false;
+    if(bln && parseInt(t.tanggal.split('-')[1])!==parseInt(bln)) return false;
+    if(q && !(
+      t.deskripsi.toLowerCase().includes(q) ||
+      t.kategori.toLowerCase().includes(q) ||
+      String(t.nominal).includes(q) ||
+      (t.bukti||'').toLowerCase().includes(q) ||
+      (t.catatan||'').toLowerCase().includes(q)
+    )) return false;
+    return true;
+  });
+
+  const lbl = document.getElementById('revisi-count-label');
+  if(lbl) lbl.textContent = filtered.length + ' transaksi ditemukan';
+
+  const tbody = document.getElementById('revisi-tbody');
+  const empty = document.getElementById('revisi-empty');
+  if(!filtered.length){ tbody.innerHTML=''; empty.style.display=''; return; }
+  empty.style.display='none';
+
+  tbody.innerHTML = filtered.map((t,i)=>{
+    const badge = t.jenis==='Masuk'?'<span class="badge badge-in">💚 Masuk</span>':
+      t.jenis==='Keluar'?'<span class="badge badge-out">❤️ Keluar</span>':
+      '<span class="badge badge-other">🔷 Lainnya</span>';
+    const nomColor = t.jenis==='Masuk'?'var(--in-t)':t.jenis==='Keluar'?'var(--out-t)':'var(--other-t)';
+    const sign = t.jenis==='Masuk'?'+':t.jenis==='Keluar'?'-':'';
+    return `<tr>
+      <td style="color:var(--muted);font-size:11px">${i+1}</td>
+      <td style="white-space:nowrap;font-size:12px;font-weight:600">${fmtDate(t.tanggal)}</td>
+      <td>
+        <div style="font-weight:600;font-size:13px">${t.deskripsi}</div>
+        ${t.catatan?`<div style="font-size:11px;color:var(--muted)">${t.catatan}</div>`:''}
+        ${t.bukti?`<div style="font-size:10px;color:var(--muted);font-family:'Space Mono',monospace">${t.bukti}</div>`:''}
+      </td>
+      <td><span style="font-size:11px;background:#f1f5f9;padding:3px 8px;border-radius:6px;font-weight:600;color:var(--muted)">${t.kategori}</span></td>
+      <td>${badge}</td>
+      <td class="text-right"><span style="font-family:'Space Mono',monospace;font-size:13px;font-weight:700;color:${nomColor}">${sign}${fmt(t.nominal)}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${t.metode||'—'}</td>
+      <td>
+        <div style="display:flex;gap:8px;justify-content:center;align-items:center">
+          <button onclick="openModal('${t.id}')" style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Sora',sans-serif;white-space:nowrap" title="Edit transaksi ini">
+            ✏️ Edit
+          </button>
+          <button onclick="deleteTransaction('${t.id}')" style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;background:#fff;color:#e11d48;border:2px solid #fca5a5;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Sora',sans-serif;white-space:nowrap" title="Hapus transaksi ini">
+            🗑 Hapus
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  renderLog();
+}
+
+// ── ACTIVITY LOG
+function addLog(entry){
+  activityLog.unshift({...entry, id: uid()});
+  if(activityLog.length > 100) activityLog = activityLog.slice(0,100);
+}
+function renderLog(){
+  const list = document.getElementById('log-list');
+  const empty = document.getElementById('log-empty');
+  if(!list) return;
+  if(!activityLog.length){ list.innerHTML=''; empty.style.display=''; return; }
+  empty.style.display='none';
+  list.innerHTML = activityLog.map(log=>{
+    const isEdit = log.type==='edit';
+    const bg = isEdit ? '#fef9c3' : '#ffe4e6';
+    const border = isEdit ? '#f59e0b' : '#fca5a5';
+    const icon = isEdit ? '✏️' : '🗑';
+    const label = isEdit ? 'EDIT' : 'HAPUS';
+    const labelColor = isEdit ? '#d97706' : '#e11d48';
+    return `<div style="background:${bg};border:1.5px solid ${border};border-radius:10px;padding:12px 16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="background:${labelColor};color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;letter-spacing:.06em">${icon} ${label}</span>
+        <span style="font-size:11px;color:var(--muted);font-family:'Space Mono',monospace">${log.waktu}</span>
+      </div>
+      <div style="font-size:13px;font-weight:700;color:#1b2a4a;margin-bottom:3px">${log.deskripsi}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${log.detail}</div>
+      <div style="font-size:11px;background:rgba(0,0,0,.04);padding:4px 10px;border-radius:6px;color:#374151">
+        <b>Alasan:</b> ${log.alasan}
+      </div>
+    </div>`;
+  }).join('');
+}
+function clearLog(){
+  if(!activityLog.length) return;
+  if(!confirm('Bersihkan semua log aktivitas?')) return;
+  activityLog = []; save();
+  renderLog();
+  showToast('Log aktivitas dibersihkan','success');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER DASHBOARD
+// ═══════════════════════════════════════════════════════════════════
+function renderDashboard(){
+  const totalMasuk=transactions.filter(t=>t.jenis==='Masuk').reduce((s,t)=>s+t.nominal,0);
+  const totalKeluar=transactions.filter(t=>t.jenis==='Keluar').reduce((s,t)=>s+t.nominal,0);
+  const totalLain=transactions.filter(t=>t.jenis==='Lainnya').reduce((s,t)=>s+t.nominal,0);
+  const net=totalMasuk-totalKeluar+totalLain;
+  const saldos=computeSaldos();
+  const sorted=getSorted();
+  const lastSaldo=sorted.length? saldos[sorted[sorted.length-1].id] : saldoAwal;
+
+  document.getElementById('kpi-masuk').textContent=fmtShort(totalMasuk);
+  document.getElementById('kpi-masuk-n').textContent=transactions.filter(t=>t.jenis==='Masuk').length+' transaksi';
+  document.getElementById('kpi-keluar').textContent=fmtShort(totalKeluar);
+  document.getElementById('kpi-keluar-n').textContent=transactions.filter(t=>t.jenis==='Keluar').length+' transaksi';
+  document.getElementById('kpi-lain').textContent=fmtShort(totalLain);
+  document.getElementById('kpi-lain-n').textContent=transactions.filter(t=>t.jenis==='Lainnya').length+' transaksi';
+  document.getElementById('kpi-saldo').textContent=fmtShort(lastSaldo);
+  document.getElementById('kpi-net-flow').textContent='Net: '+(net>=0?'+':'')+fmtShort(net);
+
+  // Monthly data
+  const monthly=getMonthlyData();
+
+  // Bar chart
+  if(chartBar) chartBar.destroy();
+  chartBar=new Chart(document.getElementById('chart-bar'),{
+    type:'bar',
+    data:{
+      labels:BULAN,
+      datasets:[
+        {label:'Masuk',data:monthly.masuk,backgroundColor:'rgba(5,150,105,.75)',borderRadius:6},
+        {label:'Keluar',data:monthly.keluar,backgroundColor:'rgba(225,29,72,.75)',borderRadius:6},
+        {label:'Lainnya',data:monthly.lain,backgroundColor:'rgba(217,119,6,.65)',borderRadius:6},
+      ]
+    },
+    options:{responsive:true,plugins:{legend:{position:'bottom'}},scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:'#f1f5f9'}},x:{grid:{display:false}}}}
+  });
+
+  // Pie chart
+  if(chartPie) chartPie.destroy();
+  chartPie=new Chart(document.getElementById('chart-pie'),{
+    type:'doughnut',
+    data:{
+      labels:['💚 Masuk','❤️ Keluar','🔷 Lainnya'],
+      datasets:[{data:[totalMasuk,totalKeluar,totalLain],backgroundColor:['#059669','#e11d48','#d97706'],borderWidth:0,hoverOffset:8}]
+    },
+    options:{responsive:true,plugins:{legend:{position:'bottom'}},cutout:'62%'}
+  });
+
+  // Line chart saldo
+  if(chartLine) chartLine.destroy();
+  const lineData=sorted.map(t=>({x:t.tanggal,y:saldos[t.id]}));
+  chartLine=new Chart(document.getElementById('chart-line'),{
+    type:'line',
+    data:{
+      labels:sorted.map(t=>fmtDate(t.tanggal)),
+      datasets:[{label:'Saldo Berjalan',data:sorted.map(t=>saldos[t.id]),borderColor:'#0d9488',backgroundColor:'rgba(13,148,136,.08)',fill:true,tension:.4,pointRadius:3,pointBackgroundColor:'#0d9488'}]
+    },
+    options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:'#f1f5f9'}},x:{grid:{display:false},ticks:{maxTicksLimit:8}}}}
+  });
+
+  // Recent 5
+  const recent5=[...sorted].slice(-5).reverse();
+  document.getElementById('recent-tbody').innerHTML=recent5.map(t=>{
+    const badge=t.jenis==='Masuk'?'<span class="badge badge-in">💚</span>':t.jenis==='Keluar'?'<span class="badge badge-out">❤️</span>':'<span class="badge badge-other">🔷</span>';
+    return `<tr>
+      <td style="font-size:12px;white-space:nowrap">${fmtDate(t.tanggal)}</td>
+      <td style="font-weight:600;font-size:13px">${t.deskripsi}</td>
+      <td><span style="font-size:11px;background:#f1f5f9;padding:3px 8px;border-radius:6px;font-weight:600;color:var(--muted)">${t.kategori}</span></td>
+      <td>${badge}</td>
+      <td class="text-right mono" style="font-size:12px;color:${t.jenis==='Masuk'?'var(--in-t)':t.jenis==='Keluar'?'var(--out-t)':'var(--other-t)'}">${t.jenis==='Keluar'?'-':'+'} ${fmt(t.nominal)}</td>
+      <td class="text-right saldo">${fmt(saldos[t.id]||0)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MONTHLY DATA
+// ═══════════════════════════════════════════════════════════════════
+function getMonthlyData(){
+  const masuk=Array(12).fill(0), keluar=Array(12).fill(0), lain=Array(12).fill(0), count=Array(12).fill(0);
+  transactions.forEach(t=>{
+    const m=parseInt(t.tanggal.split('-')[1])-1;
+    if(t.jenis==='Masuk') masuk[m]+=t.nominal;
+    else if(t.jenis==='Keluar') keluar[m]+=t.nominal;
+    else lain[m]+=t.nominal;
+    count[m]++;
+  });
+  return {masuk,keluar,lain,count,net:masuk.map((m,i)=>m-keluar[i]+lain[i])};
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER REKAP
+// ═══════════════════════════════════════════════════════════════════
+function renderRekap(){
+  const md=getMonthlyData();
+  // Bar chart2
+  if(chartBar2) chartBar2.destroy();
+  chartBar2=new Chart(document.getElementById('chart-bar2'),{
+    type:'bar',
+    data:{
+      labels:BULAN,
+      datasets:[
+        {label:'Masuk',data:md.masuk,backgroundColor:'rgba(5,150,105,.8)',borderRadius:6},
+        {label:'Keluar',data:md.keluar,backgroundColor:'rgba(225,29,72,.8)',borderRadius:6},
+        {label:'Net',data:md.net,type:'line',borderColor:'#0f1e35',backgroundColor:'transparent',tension:.4,pointRadius:4,yAxisID:'y'},
+      ]
+    },
+    options:{responsive:true,plugins:{legend:{position:'bottom'}},scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:'#f1f5f9'}},x:{grid:{display:false}}}}
+  });
+
+  // Line chart2
+  if(chartLine2) chartLine2.destroy();
+  chartLine2=new Chart(document.getElementById('chart-line2'),{
+    type:'line',
+    data:{
+      labels:BULAN,
+      datasets:[
+        {label:'Net Cash Flow',data:md.net,borderColor:'#0d9488',backgroundColor:'rgba(13,148,136,.1)',fill:true,tension:.4,pointRadius:5,pointBackgroundColor:md.net.map(v=>v>=0?'#059669':'#e11d48')},
+      ]
+    },
+    options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>fmtShort(v)},grid:{color:'#f1f5f9'}},x:{grid:{display:false}}}}
+  });
+
+  // Table
+  const tbody=document.getElementById('rekap-tbody');
+  tbody.innerHTML=BULAN.map((b,i)=>{
+    const net=md.net[i];
+    return `<tr>
+      <td style="font-weight:700">${b} 2026</td>
+      <td class="text-right"><span class="mono" style="color:var(--in-t)">${md.masuk[i]?fmt(md.masuk[i]):'—'}</span></td>
+      <td class="text-right"><span class="mono" style="color:var(--out-t)">${md.keluar[i]?fmt(md.keluar[i]):'—'}</span></td>
+      <td class="text-right"><span class="mono" style="color:var(--other-t)">${md.lain[i]?fmt(md.lain[i]):'—'}</span></td>
+      <td class="text-right"><span class="mono" style="font-weight:800;color:${net>=0?'var(--in-t)':'var(--out-t)'}">${net>=0?'+':''}${fmt(net)}</span></td>
+      <td class="text-right" style="color:var(--muted)">${md.count[i]}</td>
+    </tr>`;
+  }).join('');
+
+  const totM=md.masuk.reduce((a,b)=>a+b,0);
+  const totK=md.keluar.reduce((a,b)=>a+b,0);
+  const totL=md.lain.reduce((a,b)=>a+b,0);
+  const totN=md.net.reduce((a,b)=>a+b,0);
+  tbody.innerHTML+=`<tr style="background:var(--navy);color:#fff;font-weight:800">
+    <td>TOTAL</td>
+    <td class="text-right mono">${fmt(totM)}</td>
+    <td class="text-right mono">${fmt(totK)}</td>
+    <td class="text-right mono">${fmt(totL)}</td>
+    <td class="text-right mono">${fmt(totN)}</td>
+    <td class="text-right">${transactions.length}</td>
+  </tr>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER KATEGORI
+// ═══════════════════════════════════════════════════════════════════
+function renderKategori(){
+  const data={};
+  KATEGORI_LIST.forEach(k=>{ data[k]={masuk:0,keluar:0,lain:0,count:0}; });
+  transactions.forEach(t=>{
+    const k=t.kategori||'Lain-lain';
+    if(!data[k]) data[k]={masuk:0,keluar:0,lain:0,count:0};
+    if(t.jenis==='Masuk') data[k].masuk+=t.nominal;
+    else if(t.jenis==='Keluar') data[k].keluar+=t.nominal;
+    else data[k].lain+=t.nominal;
+    data[k].count++;
+  });
+
+  const active=KATEGORI_LIST.filter(k=>data[k].masuk||data[k].keluar||data[k].lain);
+  const totalMasuk=Object.values(data).reduce((s,d)=>s+d.masuk,0);
+
+  // Horizontal bar chart
+  if(chartCatBar) chartCatBar.destroy();
+  chartCatBar=new Chart(document.getElementById('chart-cat-bar'),{
+    type:'bar',
+    data:{
+      labels:active,
+      datasets:[
+        {label:'Masuk',data:active.map(k=>data[k].masuk),backgroundColor:'rgba(5,150,105,.75)',borderRadius:4},
+        {label:'Keluar',data:active.map(k=>data[k].keluar),backgroundColor:'rgba(225,29,72,.75)',borderRadius:4},
+      ]
+    },
+    options:{indexAxis:'y',responsive:true,plugins:{legend:{position:'bottom'}},scales:{x:{ticks:{callback:v=>fmtShort(v)},grid:{color:'#f1f5f9'}},y:{grid:{display:false}}}}
+  });
+
+  // Pie keluar per kategori
+  if(chartCatPie) chartCatPie.destroy();
+  const keluarActive=active.filter(k=>data[k].keluar>0);
+  chartCatPie=new Chart(document.getElementById('chart-cat-pie'),{
+    type:'doughnut',
+    data:{
+      labels:keluarActive,
+      datasets:[{data:keluarActive.map(k=>data[k].keluar),backgroundColor:CAT_COLORS.slice(0,keluarActive.length),borderWidth:0,hoverOffset:8}]
+    },
+    options:{responsive:true,plugins:{legend:{position:'right',labels:{font:{size:10}}}},cutout:'55%'}
+  });
+
+  // Table
+  document.getElementById('kat-tbody').innerHTML=KATEGORI_LIST.map(k=>{
+    const d=data[k]; if(!d.masuk&&!d.keluar&&!d.lain&&!d.count) return '';
+    const net=d.masuk-d.keluar+d.lain;
+    const pct=totalMasuk>0?((d.masuk/totalMasuk)*100).toFixed(1):'0.0';
+    return `<tr>
+      <td style="font-weight:700">${k}</td>
+      <td class="text-right"><span class="mono" style="color:var(--in-t)">${d.masuk?fmt(d.masuk):'—'}</span></td>
+      <td class="text-right"><span class="mono" style="color:var(--out-t)">${d.keluar?fmt(d.keluar):'—'}</span></td>
+      <td class="text-right"><span class="mono" style="color:var(--other-t)">${d.lain?fmt(d.lain):'—'}</span></td>
+      <td class="text-right"><span class="mono" style="font-weight:800;color:${net>=0?'var(--in-t)':'var(--out-t)'}">${net>=0?'+':''}${fmt(net)}</span></td>
+      <td class="text-right" style="color:var(--muted)">${pct}%</td>
+      <td class="text-right" style="color:var(--muted)">${d.count}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RENDER ALL
+// ═══════════════════════════════════════════════════════════════════
+function renderAll(){
+  const active=document.querySelector('.page.active')?.id?.replace('page-','');
+  if(active==='dashboard') renderDashboard();
+  if(active==='transaksi') renderTable();
+  if(active==='rekap') renderRekap();
+  if(active==='kategori') renderKategori();
+  if(active==='revisi') renderRevisiTable();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORT
+// ═══════════════════════════════════════════════════════════════════
+function exportExcel(){
+  const saldos=computeSaldos();
+  const sorted=getSorted();
+  const ws_data=[
+    ['No','Tanggal','Deskripsi','Kategori','Jenis','Uang Masuk (Rp)','Uang Keluar (Rp)','Lainnya (Rp)','Saldo (Rp)','Metode','No Bukti','Catatan'],
+    ...sorted.map((t,i)=>[
+      i+1, fmtDate(t.tanggal), t.deskripsi, t.kategori, t.jenis,
+      t.jenis==='Masuk'?t.nominal:'',
+      t.jenis==='Keluar'?t.nominal:'',
+      t.jenis==='Lainnya'?t.nominal:'',
+      saldos[t.id]||0,
+      t.metode, t.bukti, t.catatan
+    ])
+  ];
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet(ws_data);
+  ws['!cols']=[{wch:5},{wch:12},{wch:35},{wch:20},{wch:10},{wch:16},{wch:16},{wch:14},{wch:16},{wch:16},{wch:12},{wch:20}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Transaksi');
+  XLSX.writeFile(wb, 'BukuKas_TKI_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  showToast('File Excel berhasil didownload ✅','success');
+}
+
+function exportCSV(){
+  const saldos=computeSaldos();
+  const sorted=getSorted();
+  const rows=[['No','Tanggal','Deskripsi','Kategori','Jenis','Nominal','Saldo','Metode','Bukti','Catatan']];
+  sorted.forEach((t,i)=>rows.push([i+1,t.tanggal,t.deskripsi,t.kategori,t.jenis,t.nominal,saldos[t.id]||0,t.metode,t.bukti,t.catatan]));
+  const csv=rows.map(r=>r.map(c=>`"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='BukuKas_TKI_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+  showToast('File CSV berhasil didownload ✅','success');
+}
+
+function exportJSON(){
+  const data=JSON.stringify({transactions,saldoAwal,activityLog},null,2);
+  const blob=new Blob([data],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='BukuKas_TKI_backup_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+  showToast('Backup JSON berhasil didownload ✅','success');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPORT
+// ═══════════════════════════════════════════════════════════════════
+function handleDrop(e){
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag');
+  const file=e.dataTransfer.files[0];
+  if(file) handleFileImport(file);
+}
+
+function handleFileImport(file){
+  if(!file) return;
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='json'){
+    const r=new FileReader();
+    r.onload=e=>{
+      try{
+        const d=JSON.parse(e.target.result);
+        const imported=d.transactions||d;
+        if(!Array.isArray(imported)) throw new Error('Format tidak valid');
+        const merged=mergeTransactions(imported);
+        transactions=merged;
+        if(d.saldoAwal) saldoAwal=d.saldoAwal;
+        save(); renderAll();
+        showToast(`✅ Berhasil import ${imported.length} transaksi dari JSON`,'success');
+      }catch(err){ showToast('Gagal import: '+err.message,'error'); }
+    };
+    r.readAsText(file);
+  } else if(ext==='xlsx'||ext==='csv'){
+    const r=new FileReader();
+    r.onload=e=>{
+      try{
+        const wb=XLSX.read(e.target.result,{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+        const imported=rows.map(row=>({
+          id:uid(),
+          tanggal:parseImportDate(row.tanggal||row.Tanggal||row.TANGGAL||''),
+          deskripsi:String(row.deskripsi||row.Deskripsi||row.DESKRIPSI||''),
+          kategori:String(row.kategori||row.Kategori||row.KATEGORI||'Lain-lain'),
+          jenis:String(row.jenis||row.Jenis||row.JENIS||'Masuk'),
+          nominal:parseFloat(row.nominal||row.Nominal||row.NOMINAL||row['Uang Masuk (Rp)']||row['Uang Keluar (Rp)']||0)||0,
+          metode:String(row.metode||row.Metode||row.METODE||row['Metode']||''),
+          bukti:String(row.bukti||row.Bukti||row['No Bukti']||''),
+          catatan:String(row.catatan||row.Catatan||''),
+        })).filter(t=>t.deskripsi&&t.nominal>0);
+        transactions=mergeTransactions(imported);
+        save(); renderAll();
+        showToast(`✅ Berhasil import ${imported.length} transaksi`,'success');
+      }catch(err){ showToast('Gagal import: '+err.message,'error'); }
+    };
+    r.readAsArrayBuffer(file);
+  } else {
+    showToast('Format file tidak didukung (.xlsx, .csv, .json)','error');
   }
-  throw new Error("Tidak ditemukan: " + id);
 }
 
-function deleteTransaksi(id) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TRANSAKSI);
-  var rows = sh.getDataRange().getValues();
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(id)) { sh.deleteRow(i+1); return { deleted: id }; }
+function parseImportDate(s){
+  if(!s) return new Date().toISOString().slice(0,10);
+  if(typeof s==='number'){ const d=new Date((s-25569)*86400*1000); return d.toISOString().slice(0,10); }
+  s=String(s).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)){ const p=s.split('/'); return `${p[2]}-${p[1]}-${p[0]}`; }
+  const d=new Date(s); return isNaN(d)?new Date().toISOString().slice(0,10):d.toISOString().slice(0,10);
+}
+
+function mergeTransactions(imported){
+  const existing=new Set(transactions.map(t=>t.tanggal+'|'+t.deskripsi+'|'+t.nominal));
+  const newOnes=imported.filter(t=>!existing.has(t.tanggal+'|'+t.deskripsi+'|'+t.nominal));
+  return [...transactions,...newOnes];
+}
+
+function downloadTemplate(){
+  const ws_data=[
+    ['tanggal','deskripsi','kategori','jenis','nominal','metode','bukti','catatan'],
+    ['2026-05-01','Contoh pemasukan','Jasa','Masuk','1000000','Transfer Bank','INV-001','Keterangan'],
+    ['2026-05-02','Contoh pengeluaran','Belanja Operasional','Keluar','250000','Tunai','',''],
+  ];
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet(ws_data);
+  XLSX.utils.book_append_sheet(wb,ws,'Template');
+  XLSX.writeFile(wb,'Template_BukuKas_TKI.xlsx');
+  showToast('Template didownload ✅','success');
+}
+
+function clearAllData(){
+  if(!confirm('Yakin hapus SEMUA data transaksi? Ini tidak bisa dibatalkan!')) return;
+  transactions=[]; save(); renderAll();
+  showToast('Semua data dihapus','success');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════════════
+function showToast(msg,type='success'){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.className='toast '+type+' show';
+  clearTimeout(t._timer);
+  t._timer=setTimeout(()=>t.classList.remove('show'),3000);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GOOGLE SHEETS UI CONTROLS
+// ═══════════════════════════════════════════════════════════════════
+function saveScriptUrl() {
+  const url = document.getElementById('script-url-input').value.trim();
+  if (!url.startsWith('https://script.google.com')) {
+    showToast('URL tidak valid. Harus dari script.google.com', 'error'); return;
   }
-  throw new Error("Tidak ditemukan: " + id);
+  setScriptUrl(url);
+  showToast('URL disimpan! Mencoba koneksi...', 'success');
+  testConnection();
 }
 
-function bulkSave(transactions) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_TRANSAKSI);
-  var last = sh.getLastRow();
-  if (last > 1) sh.deleteRows(2, last - 1);
-  if (transactions && transactions.length > 0) {
-    var rows = [];
-    for (var i = 0; i < transactions.length; i++) {
-      var d = transactions[i];
-      rows.push([d.id, d.tanggal, d.deskripsi, d.kategori, d.jenis, d.nominal,
-        d.metode||"", d.bukti||"", d.catatan||"", d.created_at||new Date().toISOString()]);
-    }
-    sh.getRange(2, 1, rows.length, 10).setValues(rows);
+async function testConnection() {
+  if (!SCRIPT_URL) { showToast('Belum ada URL. Isi dulu ya bro!', 'error'); return; }
+  try {
+    syncStatus = 'syncing'; updateSyncBadge(); updateSyncBadge2();
+    const data = await apiGet('ping');
+    syncStatus = 'ok'; updateSyncBadge(); updateSyncBadge2();
+    showToast('✅ Koneksi berhasil! Backend aktif sejak ' + (data.ts||''), 'success');
+  } catch(e) {
+    syncStatus = 'error'; updateSyncBadge(); updateSyncBadge2();
+    showToast('❌ Gagal konek: ' + e.message, 'error');
   }
-  return { saved: transactions ? transactions.length : 0 };
 }
 
-function getLog() {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_LOG);
-  var rows = sh.getDataRange().getValues();
-  if (rows.length <= 1) return [];
-  var out = [];
-  for (var i = 1; i < rows.length; i++) {
-    var r = rows[i];
-    if (!r[0]) continue;
-    out.push({ id: r[0], waktu: r[1], type: r[2], deskripsi: r[3], detail: r[4], alasan: r[5] });
+async function manualSync() {
+  if (!SCRIPT_URL) { showToast('Sambungkan ke Google Sheets dulu!', 'error'); return; }
+  showToast('🔄 Memuat data dari Sheets...', 'success');
+  const ok = await loadFromSheets();
+  if (ok) {
+    document.getElementById('saldo-awal-input').value = saldoAwal;
+    updateSaldoAwalDisplay();
+    renderAll();
+    showToast('✅ Data berhasil disinkron dari Google Sheets!', 'success');
+  } else {
+    showToast('❌ Sync gagal. Cek koneksi internet atau URL.', 'error');
   }
-  out.reverse();
-  return out;
 }
 
-function addLog(d) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_LOG);
-  sh.appendRow([d.id, d.waktu, d.type, d.deskripsi, d.detail, d.alasan]);
-  return { id: d.id };
+function disconnectSheets() {
+  if (!confirm('Putus sambungan ke Google Sheets? Data lokal tetap aman.')) return;
+  SCRIPT_URL = '';
+  localStorage.removeItem('tki_script_url');
+  syncStatus = 'offline'; updateSyncBadge(); updateSyncBadge2();
+  document.getElementById('script-url-input').value = '';
+  showToast('Sambungan diputus. App berjalan offline.', 'success');
 }
 
-function getConfig() {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_CONFIG);
-  var rows = sh.getDataRange().getValues();
-  var cfg = {};
-  for (var i = 1; i < rows.length; i++) { cfg[rows[i][0]] = rows[i][1]; }
-  return cfg;
+function updateSyncBadge2() {
+  const b = document.getElementById('sync-badge-2');
+  if (!b) return;
+  const labels = {offline:'Belum tersambung',syncing:'Menyinkron...',ok:'🟢 Tersambung',error:'🔴 Gagal konek'};
+  b.textContent = labels[syncStatus] || syncStatus;
 }
 
-function getSaldoAwal() {
-  return Number(getConfig()["saldo_awal"]) || 5000000;
-}
+// ═══════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════
+load();
+populateKategoriFilter();
 
-function setConfig(key, value) {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_CONFIG);
-  var rows = sh.getDataRange().getValues();
-  for (var i = 1; i < rows.length; i++) {
-    if (rows[i][0] === key) { sh.getRange(i+1, 2).setValue(value); return { key: key, value: value }; }
-  }
-  sh.appendRow([key, value]);
-  return { key: key, value: value };
+// Pre-fill URL if already saved
+if (SCRIPT_URL) {
+  const inp = document.getElementById('script-url-input');
+  if (inp) inp.value = SCRIPT_URL;
 }
+updateSyncBadge();
+updateSyncBadge2();
 
-function clearAll() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var list = [SHEET_TRANSAKSI, SHEET_LOG];
-  for (var s = 0; s < list.length; s++) {
-    var sh = ss.getSheetByName(list[s]);
-    var last = sh.getLastRow();
-    if (last > 1) sh.deleteRows(2, last - 1);
-  }
-  return { cleared: true };
-}
+// Close modals on overlay click
+document.getElementById('modal-overlay').addEventListener('click',function(e){
+  if(e.target===this) closeModal();
+});
+document.getElementById('delete-overlay').addEventListener('click',function(e){
+  if(e.target===this) closeDeleteModal();
+});
+// Keyboard shortcut
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){ closeModal(); closeDeleteModal(); }
+});
+</script>
+</body>
+</html>
